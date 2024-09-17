@@ -11,6 +11,7 @@ pub use adapter::remote::RemoteMockServerAdapter;
 
 use crate::common;
 pub use mock::{Mock, MockExt};
+pub use proxy::Recording;
 pub use server::MockServer;
 pub use spec::{Then, When};
 
