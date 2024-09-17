@@ -105,7 +105,7 @@ use serde::{Deserialize, Serialize};
 use api::MockServerAdapter;
 use common::util::Join;
 
-pub use api::{Method, Mock, MockExt, MockServer, Regex, Then, When};
+pub use api::{Method, Mock, MockExt, MockServer, Recording, Regex, Then, When};
 
 mod api;
 pub mod common;
