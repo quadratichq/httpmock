@@ -110,16 +110,16 @@ impl<'a> ProxyRule<'a> {
 /// monitoring and verifying the exact behavior of HTTP interactions is necessary,
 /// such as ensuring that a server is responding with the correct headers, body content,
 /// and status codes in response to various requests.
-pub struct Recording {
+pub struct Recording<'a> {
     pub id: usize,
-    pub(crate) server: MockServer,
+    pub(crate) server: &'a MockServer,
 }
 
 /// Represents a reference to a recording of HTTP interactions on a mock server.
 /// This struct allows for management and retrieval of recorded data, such as viewing,
 /// exporting, and deleting the recording.
-impl Recording {
-    pub fn new(id: usize, server: MockServer) -> Self {
+impl<'a> Recording<'a> {
+    pub fn new(id: usize, server: &'a MockServer) -> Self {
         Self { id, server }
     }
 
