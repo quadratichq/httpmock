@@ -2,7 +2,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
 use crate::server::tls::Error::{CaCertificateError, GenerateCertificateError};
 use async_trait::async_trait;
-use rcgen::{Certificate, CertificateParams, KeyPair};
+use rcgen::{CertificateParams, Issuer, KeyPair};
 use rustls::{
     crypto::ring::sign::any_supported_type,
     server::{ClientHello, ResolvesServerCert},
@@ -116,10 +116,20 @@ impl<'a> GeneratingCertificateResolver {
             CaCertificateError(format!("Expected CA key to be provided in PEM format but failed to parse it (host: {}: error: {:?})", hostname, err))
         })?;
 
-        // Set up certificate parameters for the new certificate
-        let mut params = CertificateParams::new(vec![hostname.to_owned()]);
+        // Build an issuer from the CA certificate and key, used to sign the host certificate
+        let issuer = Issuer::from_ca_cert_pem(&self.state.ca_cert_str, ca_key).map_err(|err| {
+            CaCertificateError(format!("Cannot create issuer from CA certificate (host: {}: error: {:?})", hostname, err))
+        })?;
 
-        let key_pair = KeyPair::generate(&rcgen::PKCS_ECDSA_P256_SHA256).map_err(|err| {
+        // Set up certificate parameters for the new certificate
+        let params = CertificateParams::new(vec![hostname.to_owned()]).map_err(|err| {
+            GenerateCertificateError(format!(
+                "Cannot create certificate parameters (host: {}: error: {:?})",
+                hostname, err
+            ))
+        })?;
+
+        let key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).map_err(|err| {
             GenerateCertificateError(format!(
                 "Cannot generate new key pair (host: {}: error: {:?})",
                 hostname, err
@@ -127,31 +137,16 @@ impl<'a> GeneratingCertificateResolver {
         })?;
 
         let serialized_key_pair = key_pair.serialize_pem();
-        params.key_pair = Some(key_pair);
 
-        // Create the new certificate
-        let cert = Certificate::from_params(params).map_err(|err| {
+        // Create the new certificate, signing it with the CA's private key
+        let cert = params.signed_by(&key_pair, &issuer).map_err(|err| {
             GenerateCertificateError(format!(
                 "Cannot generate new certificate (host: {}: error: {:?})",
                 hostname, err
             ))
         })?;
 
-        // Serialize the new certificate, signing it with the CA's private key
-        let new_host_cert_params = CertificateParams::from_ca_cert_pem(&self.state.ca_cert_str, ca_key).map_err(|err| {
-            GenerateCertificateError(format!("Cannot create new host certificate parameters from CA certificate (host: {}: error: {:?})", hostname, err))
-        })?;
-
-        let new_host_cert = Certificate::from_params(new_host_cert_params).map_err(|err| {
-            GenerateCertificateError(format!(
-                "Cannot generate new host certificate (host: {}: error: {:?})",
-                hostname, err
-            ))
-        })?;
-
-        let cert_pem = cert.serialize_pem_with_signer(&new_host_cert).map_err(|err| {
-            GenerateCertificateError(format!("Cannot sign generated host certificate with CA certificate (host: {}: error: {:?})", hostname, err))
-        })?;
+        let cert_pem = cert.pem();
 
         // Convert the generated key and certificate into rustls-compatible formats
         let private_key = Self::load_private_key(serialized_key_pair).map_err(|err| {
